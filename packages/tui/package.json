@@ -1,0 +1,42 @@
+{
+  "name": "@framedev/tui",
+  "version": "0.1.0",
+  "description": "Bubbletea-inspired TUI framework for TypeScript/Node.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest",
+    "lint": "eslint src --ext .ts",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "tui",
+    "terminal"
+  ],
+  "dependencies": {
+    "ansi-escapes": "^7.0.0",
+    "string-width": "^7.2.0",
+    "strip-ansi": "^7.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

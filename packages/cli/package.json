@@ -1,0 +1,56 @@
+{
+  "name": "@framedev/cli",
+  "version": "0.1.0",
+  "description": "Frame: coding agent optimized for local LLMs",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "bin": {
+    "frame": "./dist/index.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node scripts/generate-build-config.js && tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "test": "vitest",
+    "lint": "eslint src --ext .ts",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "coding-agent",
+    "local-llm",
+    "ai-assistant",
+    "code-generation",
+    "tui"
+  ],
+  "dependencies": {
+    "@framedev/tui": "workspace:*",
+    "@homunculus-live/core": "*",
+    "@homunculus-live/introspection": "*",
+    "@homunculus-live/primitives": "*",
+    "@homunculus-live/semantic-engine": "*",
+    "better-sqlite3": "^11.8.1",
+    "chalk": "^5.4.1",
+    "dotenv": "^16.5.0",
+    "glob": "^11.0.1",
+    "winston": "^3.17.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0"
+  }
+}
