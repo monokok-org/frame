@@ -11,8 +11,8 @@
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
     "changeset": "changeset",
-    "version": "changeset version",
-    "release": "changeset publish"
+    "version-packages": "changeset version",
+    "release": "pnpm -r run build && changeset publish"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.9",

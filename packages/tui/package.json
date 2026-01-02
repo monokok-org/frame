@@ -1,6 +1,6 @@
 {
   "name": "@framedev/tui",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "description": "Bubbletea-inspired TUI framework for TypeScript/Node.js",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
