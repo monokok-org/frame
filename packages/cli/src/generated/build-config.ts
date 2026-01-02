@@ -1,2 +1,2 @@
 // Generated at build time. Do not edit manually.
-export const BUILD_FRAMEBASE_URL = "";
+export const BUILD_FRAMEBASE_URL = "https://q.framebase.dev";
