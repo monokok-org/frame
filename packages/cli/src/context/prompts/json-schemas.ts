@@ -28,6 +28,60 @@ export const INTENT_SCHEMA = {
 } as const;
 
 /**
+ * Knowledge intent schema
+ */
+export const KNOWLEDGE_INTENT_SCHEMA = {
+  type: 'object',
+  properties: {
+    needs_knowledge: {
+      type: 'boolean',
+    },
+    category: {
+      type: 'string',
+      enum: [
+        'best-practice',
+        'tool-comparison',
+        'deprecated-check',
+        'current-standard',
+        'none',
+      ],
+    },
+    reason: {
+      type: 'string',
+    },
+  },
+  required: ['needs_knowledge', 'category', 'reason'],
+} as const;
+
+/**
+ * Knowledge query rewrite schema
+ */
+export const KNOWLEDGE_QUERY_REWRITE_SCHEMA = {
+  type: 'object',
+  properties: {
+    query: {
+      type: 'string',
+    },
+    source: {
+      type: 'string',
+    },
+    tech_stack: {
+      type: 'string',
+    },
+    filters: {
+      type: 'array',
+      items: {
+        type: 'string',
+      },
+    },
+    reason: {
+      type: 'string',
+    },
+  },
+  required: ['query', 'reason'],
+} as const;
+
+/**
  * Execution plan step schema
  */
 const PLAN_STEP_SCHEMA = {
@@ -270,4 +324,88 @@ export const ANSWER_EXTRACTION_SCHEMA = {
     },
   },
   required: ['current_method', 'rationale'],
+} as const;
+
+/**
+ * Knowledge query generation schema (Phase 1)
+ */
+export const KNOWLEDGE_QUERY_GENERATION_SCHEMA = {
+  type: 'object',
+  properties: {
+    q: {
+      type: 'string',
+      description: 'Concise keyword query for Framebase (e.g., "react install", "mui setup")',
+    },
+    filters: {
+      type: 'array',
+      items: {
+        type: 'string',
+      },
+      description: 'Framebase filters (e.g., "source = \\"react\\"", "version = \\"latest\\"")',
+    },
+    limit: {
+      type: 'number',
+      description: 'Number of frames to retrieve (default 5)',
+    },
+    reasoning: {
+      type: 'string',
+      description: 'Brief explanation of why this query and filters were chosen',
+    },
+  },
+  required: ['q'],
+} as const;
+
+/**
+ * Knowledge synthesis schema (Phase 2 - after getting frames)
+ */
+export const KNOWLEDGE_SYNTHESIS_SCHEMA = {
+  type: 'object',
+  properties: {
+    no_relevant_info: {
+      type: 'boolean',
+      description: 'True if frames contain no relevant information for the task',
+    },
+    recipe: {
+      type: 'object',
+      properties: {
+        summary: {
+          type: 'string',
+          description: 'One-line summary of what to do (e.g., "Install MUI v7 with emotion styling")',
+        },
+        steps: {
+          type: 'array',
+          items: {
+            type: 'string',
+          },
+          description: 'Ordered list of specific actions (e.g., "pnpm add @mui/material@7.3.6")',
+        },
+        key_points: {
+          type: 'array',
+          items: {
+            type: 'string',
+          },
+          description: 'Important notes (e.g., "Requires React 18+", "Uses emotion for styling")',
+        },
+        deprecated: {
+          type: 'array',
+          items: {
+            type: 'string',
+          },
+          description: 'Old methods to avoid (e.g., "Don\'t use create-react-app (deprecated)")',
+        },
+      },
+      required: ['summary', 'steps'],
+    },
+    confidence: {
+      type: 'number',
+      minimum: 0,
+      maximum: 1,
+      description: 'Confidence in the recipe (0-1)',
+    },
+    reason: {
+      type: 'string',
+      description: 'Brief explanation of synthesis reasoning',
+    },
+  },
+  required: ['confidence', 'reason'],
 } as const;

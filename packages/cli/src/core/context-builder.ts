@@ -11,6 +11,7 @@ import {
 } from '../types/context.js';
 import type { ExecutorContext } from '../types/executor.js';
 import { type LocalKnowledgeService, type KnowledgeQuery } from '../knowledge/index.js';
+import type { FramebaseFrame } from '../knowledge/framebase.js';
 import { WorkspaceMemoryManager } from './workspace-memory.js';
 import { allSkills } from '../skills/index.js';
 import { logger } from '../utils/logger.js';
@@ -350,7 +351,7 @@ export class ContextBuilder {
       sources: string[];
       cached: boolean;
       provider: 'framebase' | 'web';
-      frames?: Array<{ context?: string }>;
+      frames?: FramebaseFrame[];
       filters?: string[];
     }
   ): string {
@@ -363,8 +364,19 @@ export class ContextBuilder {
       }
 
       answer.frames.slice(0, 2).forEach((frame, index) => {
+        sections.push(`## Frame ${index + 1}`);
+        const meta = frame.metadata;
+        if (meta?.source || meta?.version) {
+          const metaParts: string[] = [];
+          if (meta.source) {
+            metaParts.push(`source=${meta.source}`);
+          }
+          if (meta.version) {
+            metaParts.push(`version=${meta.version}`);
+          }
+          sections.push(`Meta: ${metaParts.join(' ')}`);
+        }
         if (frame.context) {
-          sections.push(`## Frame ${index + 1}`);
           sections.push(this.truncateText(frame.context, 1200));
           sections.push('');
         }

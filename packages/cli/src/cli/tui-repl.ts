@@ -22,6 +22,7 @@ import type { DirectExecutor } from '../core/direct-executor.js';
 import type { ExecutorEvent, ExecutorResult } from '../types/executor.js';
 import { logger, setConsoleLoggingEnabled } from '../utils/logger.js';
 import { getDebugLogger } from '../utils/debug-logger.js';
+import { getFrameVersion } from '../utils/version.js';
 
 interface LogEntry {
   message: string;
@@ -72,6 +73,7 @@ interface Model {
   activityLevel: ActivityLevel;
   settings: SettingsManager;
   settingsPath: string;
+  frameVersion: string;
   isFirstRun: boolean;
   ollamaInfoStatus: ModelInfoStatus;
   ollamaInfo?: OllamaModelInfo;
@@ -126,6 +128,7 @@ export class TUIRepl {
       const settings = new SettingsManager();
       const isFirstRun = settings.isFirstRun();
       const settingsPath = settings.getPath();
+      const frameVersion = getFrameVersion();
       const debugLogger = getDebugLogger();
       const width = process.stdout.columns || 80;
       const height = process.stdout.rows || 24;
@@ -149,6 +152,7 @@ export class TUIRepl {
           activityLevel: 'system',
           settings,
           settingsPath,
+          frameVersion,
           isFirstRun,
           ollamaInfoStatus: 'idle',
           ollamaInfo: undefined,
@@ -1483,7 +1487,9 @@ export class TUIRepl {
       this.truncateText(`  Theme: ${settings.ui.theme}`, contentWidth),
       this.truncateText(`  Show Details: ${settings.ui.showAgentDetails ? 'Yes' : 'No'}`, contentWidth),
       '',
-      this.truncateText(`Settings are stored at ${model.settingsPath}`, contentWidth),
+      'Frame',
+      this.truncateText(`  Version: ${model.frameVersion}`, contentWidth),
+      this.truncateText(`  Settings: ${model.settingsPath}`, contentWidth),
       '',
       "Press ESC or 'q' to return"
     ];

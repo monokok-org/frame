@@ -22,12 +22,28 @@ import {
   type EmptyResponseContext,
 } from './empty-response-handler.js';
 import { parseTextToolCalls } from '../utils/tool-call-parser.js';
+import { parseJsonObject } from '../utils/llm-json.js';
 import { buildDirectExecutorSystemPrompt } from '../context/prompts/direct-executor.js';
 import {
-  detectSourceFromQuery,
-  extractVersionFromQuery,
-  normalizeVersion,
-} from '../knowledge/tech-stack.js';
+  KNOWLEDGE_INTENT_SYSTEM_PROMPT,
+  buildKnowledgeIntentPrompt,
+} from '../context/prompts/knowledge-intent.js';
+import {
+  KNOWLEDGE_INTENT_SCHEMA,
+  KNOWLEDGE_QUERY_REWRITE_SCHEMA,
+  KNOWLEDGE_QUERY_GENERATION_SCHEMA,
+  KNOWLEDGE_SYNTHESIS_SCHEMA,
+} from '../context/prompts/json-schemas.js';
+import {
+  KNOWLEDGE_QUERY_REWRITE_SYSTEM_PROMPT,
+  buildKnowledgeQueryRewritePrompt,
+} from '../context/prompts/knowledge-query-rewrite.js';
+import {
+  KNOWLEDGE_SYNTHESIS_SYSTEM_PROMPT,
+  buildKnowledgeSynthesisPrompt,
+} from '../context/prompts/knowledge-synthesis.js';
+import { getWorkspaceMemory } from './workspace-context.js';
+import os from 'os';
 
 type ToolMode = 'full' | 'core' | 'minimal';
 
@@ -140,6 +156,7 @@ export interface DirectExecutorContext {
   preflight?: {
     toolCalls: ToolCall[];
     toolResults: ToolCallResult[];
+    acknowledgment?: string; // Model's response after reading knowledge
   };
 }
 
@@ -504,77 +521,435 @@ export class DirectExecutor {
       return;
     }
 
-    if (!this.shouldPreflightKnowledge(ctx.query)) {
+    const intent = await this.classifyKnowledgeIntent(ctx.query);
+    if (!intent.needsKnowledge) {
       return;
     }
 
-    const source = detectSourceFromQuery(ctx.query);
-    const version = normalizeVersion(extractVersionFromQuery(ctx.query, source), source);
-    const techStack = source ? (version ? `${source}@${version}` : source) : undefined;
-
-    const args: KnowledgeQuery = {
-      query: ctx.query,
-      category: this.inferKnowledgeCategory(ctx.query),
-      tech_stack: techStack,
-      source,
-      version,
-      allowWebFallback: false,
-    };
-
-    const call: ToolCall = {
-      id: `preflight_knowledge_${Date.now().toString(36)}`,
-      type: 'function',
-      function: {
-        name: 'knowledge-query',
-        arguments: args,
-      },
-    };
+    const category = intent.category === 'none' ? 'current-standard' : intent.category;
+    logger.info(`[DirectExecutor] Knowledge preflight triggered (category: ${category})`);
 
     try {
-      const result = await this.executeToolCall(call, ctx);
+      // Use sub-agent to query Framebase and synthesize knowledge
+      logger.info('[DirectExecutor] Invoking knowledge synthesis sub-agent');
+      const synthesis = await this.synthesizeKnowledge(ctx.query, category);
+
       ctx.preflight = {
-        toolCalls: [call],
-        toolResults: [result],
+        toolCalls: [],
+        toolResults: [],
+        acknowledgment: synthesis,
       };
+
+      logger.info(`[DirectExecutor] Knowledge preflight complete. Synthesis: ${synthesis.substring(0, 150)}...`);
+
+      // Emit synthesis event so user sees it
+      if (synthesis) {
+        this.emitEvent({
+          type: 'tool_result',
+          tool: 'knowledge-synthesis',
+          message: 'Knowledge recipe ready',
+          detail: synthesis,
+          level: 'info',
+        });
+      }
     } catch (error) {
       logger.warn(`[DirectExecutor] Knowledge preflight failed: ${error}`);
     }
   }
 
-  private shouldPreflightKnowledge(query: string): boolean {
-    const lower = query.toLowerCase();
-    if (detectSourceFromQuery(lower)) {
-      return true;
+  private async classifyKnowledgeIntent(query: string): Promise<{
+    needsKnowledge: boolean;
+    category: KnowledgeQuery['category'] | 'none';
+    reason: string;
+  }> {
+    const trimmed = query.trim();
+    if (trimmed.length === 0) {
+      return { needsKnowledge: false, category: 'none', reason: 'Empty query' };
     }
-    if (/\bv?\d+\.\d+(?:\.\d+)?\b/.test(lower)) {
-      return true;
+
+    // Trust the LLM to classify - no heuristics
+    const prompt = buildKnowledgeIntentPrompt(trimmed);
+
+    try {
+      const response = await this.llm.chat(
+        [
+          { role: 'system', content: KNOWLEDGE_INTENT_SYSTEM_PROMPT },
+          { role: 'user', content: prompt },
+        ],
+        { format: KNOWLEDGE_INTENT_SCHEMA }
+      );
+
+      const content = response.content || '{}';
+      const parsed = parseJsonObject<Record<string, unknown>>(content);
+
+      const needsKnowledge =
+        typeof parsed.needs_knowledge === 'boolean' ? parsed.needs_knowledge : true;
+      const reason = typeof parsed.reason === 'string' ? parsed.reason : 'No reason provided';
+      const category = this.normalizeKnowledgeCategory(parsed.category, needsKnowledge);
+
+      return { needsKnowledge, category, reason };
+    } catch (error) {
+      logger.warn(`[DirectExecutor] Knowledge intent classification failed: ${error}`);
+      // FAIL SAFE: Default to running knowledge query
+      return {
+        needsKnowledge: true,
+        category: 'current-standard',
+        reason: 'Classification failed - defaulting to knowledge query',
+      };
     }
-    if (/\bversion\b/.test(lower)) {
-      return true;
-    }
-    return false;
   }
 
-  private inferKnowledgeCategory(query: string): KnowledgeQuery['category'] {
-    const lower = query.toLowerCase();
+  /**
+   * Synthesize knowledge using sub-agent (TWO-PHASE)
+   * Phase 1: Sub-agent generates Framebase query
+   * Phase 2: Sub-agent analyzes frames and creates recipe
+   */
+  private async synthesizeKnowledge(
+    userQuery: string,
+    category: KnowledgeQuery['category']
+  ): Promise<string> {
+    try {
+      const environment = this.buildKnowledgeRewriteEnvironment();
+      const handoffContext = this.buildHandoffContext(userQuery, category);
 
-    if (/^(create|make|build|scaffold|init|setup)/i.test(lower)) {
-      return 'best-practice';
+      // PHASE 1: Get Framebase query from sub-agent
+      logger.info('[DirectExecutor] Sub-agent Phase 1: Generating Framebase query');
+
+      const queryPrompt = buildKnowledgeSynthesisPrompt({
+        userQuery,
+        category,
+        environment,
+        handoffContext,
+      });
+
+      const queryResponse = await this.llm.chat(
+        [
+          { role: 'system', content: KNOWLEDGE_SYNTHESIS_SYSTEM_PROMPT },
+          { role: 'user', content: queryPrompt },
+        ],
+        { format: KNOWLEDGE_QUERY_GENERATION_SCHEMA }
+      );
+
+      const fbQuery = parseJsonObject<{
+        q: string;
+        filters?: string[];
+        limit?: number;
+        reasoning?: string;
+      }>(queryResponse.content || '{}');
+
+      if (!fbQuery.q) {
+        logger.warn('[DirectExecutor] Sub-agent failed to generate Framebase query');
+        logger.warn(`[DirectExecutor] Raw response: ${queryResponse.content}`);
+        return 'Failed to generate knowledge query.';
+      }
+
+      // Validate query is concise (Meilisearch has 10-word limit)
+      const wordCount = fbQuery.q.trim().split(/\s+/).length;
+      if (wordCount > 5) {
+        logger.warn(`[DirectExecutor] Query too verbose (${wordCount} words): "${fbQuery.q}"`);
+        // Try to truncate to first 3-4 essential words
+        const truncated = fbQuery.q.trim().split(/\s+/).slice(0, 4).join(' ');
+        logger.info(`[DirectExecutor] Truncated to: "${truncated}"`);
+        fbQuery.q = truncated;
+      }
+
+      logger.info(`[DirectExecutor] Sub-agent query: "${fbQuery.q}" with filters: ${JSON.stringify(fbQuery.filters || [])}`);
+
+      // PHASE 2: Execute Framebase query
+      const { FramebaseClient } = await import('../knowledge/framebase.js');
+      const framebaseClient = new FramebaseClient();
+
+      const framebaseResponse = await framebaseClient.query({
+        q: fbQuery.q,
+        filters: fbQuery.filters,
+        limit: fbQuery.limit || 5,
+      });
+
+      const frames = framebaseResponse.frames || [];
+      logger.info(`[DirectExecutor] Framebase returned ${frames.length} frames`);
+
+      if (frames.length === 0) {
+        return 'No relevant knowledge found in Framebase for this query.';
+      }
+
+      // PHASE 3: Sub-agent analyzes frames and creates recipe
+      logger.info('[DirectExecutor] Sub-agent Phase 2: Analyzing frames and creating recipe');
+
+      const analysisPrompt = this.buildFrameAnalysisPrompt(frames, handoffContext);
+
+      const analysisResponse = await this.llm.chat(
+        [
+          { role: 'system', content: KNOWLEDGE_SYNTHESIS_SYSTEM_PROMPT },
+          { role: 'user', content: analysisPrompt },
+        ],
+        { format: KNOWLEDGE_SYNTHESIS_SCHEMA }
+      );
+
+      const synthesis = parseJsonObject<{
+        no_relevant_info?: boolean;
+        recipe?: {
+          summary: string;
+          steps: string[];
+          key_points?: string[];
+          deprecated?: string[];
+        };
+        confidence: number;
+        reason: string;
+      }>(analysisResponse.content || '{}');
+
+      // If no relevant info, return early
+      if (synthesis.no_relevant_info) {
+        logger.info('[DirectExecutor] Sub-agent found no relevant information in frames');
+        return `Checked ${frames.length} knowledge frames but found no relevant information. Reason: ${synthesis.reason}`;
+      }
+
+      // Format recipe for main agent
+      if (!synthesis.recipe) {
+        logger.warn('[DirectExecutor] Sub-agent returned no recipe');
+        return 'Knowledge synthesis incomplete.';
+      }
+
+      const recipe = synthesis.recipe;
+      const parts: string[] = [];
+
+      parts.push(`📋 ${recipe.summary}`);
+      parts.push('');
+      parts.push('Steps:');
+      recipe.steps.forEach((step, i) => parts.push(`${i + 1}. ${step}`));
+
+      if (recipe.key_points && recipe.key_points.length > 0) {
+        parts.push('');
+        parts.push('Key Points:');
+        recipe.key_points.forEach(point => parts.push(`• ${point}`));
+      }
+
+      if (recipe.deprecated && recipe.deprecated.length > 0) {
+        parts.push('');
+        parts.push('⚠️  Avoid (Deprecated):');
+        recipe.deprecated.forEach(item => parts.push(`• ${item}`));
+      }
+
+      parts.push('');
+      parts.push(`Confidence: ${(synthesis.confidence * 100).toFixed(0)}%`);
+
+      const formatted = parts.join('\n');
+      logger.info(`[DirectExecutor] Knowledge synthesized (confidence: ${synthesis.confidence.toFixed(2)})`);
+
+      return formatted;
+    } catch (error) {
+      logger.error(`[DirectExecutor] Knowledge synthesis failed: ${error}`);
+      return `Knowledge synthesis error: ${error}`;
+    }
+  }
+
+  /**
+   * Build prompt for frame analysis (Phase 2 of synthesis)
+   */
+  private buildFrameAnalysisPrompt(
+    frames: Array<{ metadata?: any; context?: string; content?: string }>,
+    handoffContext: string
+  ): string {
+    const framesSummary = frames
+      .map((frame, i) => {
+        const meta = frame.metadata;
+        const content = frame.context || frame.content || '';
+        const metaStr = meta?.source
+          ? `[${meta.source}${meta.version ? `@${meta.version}` : ''}${meta.score ? ` score=${meta.score.toFixed(2)}` : ''}]`
+          : '';
+
+        return `## Frame ${i + 1} ${metaStr}\n${content.substring(0, 800)}`;
+      })
+      .join('\n\n');
+
+    return `# Task Handoff
+
+${handoffContext}
+
+# Framebase Results (${frames.length} frames)
+
+${framesSummary}
+
+---
+
+Now analyze these frames and create a concise recipe for the main agent. Include specific versions, commands, and steps. If frames aren't helpful, set "no_relevant_info": true.
+
+Your synthesis:`;
+  }
+
+  /**
+   * Build natural language handoff context for sub-agents
+   */
+  private buildHandoffContext(userQuery: string, category: string): string {
+    const memory = getWorkspaceMemory()?.get();
+
+    const parts: string[] = [];
+
+    // What we're trying to do
+    parts.push(`I'm working on the user's request: "${userQuery}"`);
+    parts.push('');
+
+    // Why we need knowledge
+    const whyMap: Record<string, string> = {
+      'best-practice': 'I need to know the current best practice so I don\'t use outdated approaches.',
+      'tool-comparison': 'I need to understand which tool/approach is recommended right now.',
+      'deprecated-check': 'I need to verify if this approach is still current or if it\'s been deprecated.',
+      'current-standard': 'I need to know the modern, standard way to do this.',
+    };
+    parts.push(whyMap[category] || 'I need up-to-date information about this.');
+    parts.push('');
+
+    // Project context if available
+    if (memory?.packageManager) {
+      parts.push(`We're using ${memory.packageManager} as the package manager.`);
     }
 
-    if (/deprecated|outdated|legacy|old/i.test(lower)) {
-      return 'deprecated-check';
+    if (memory?.lastProjectCreated) {
+      const proj = memory.lastProjectCreated;
+      parts.push(`The project is ${proj.type}${proj.framework ? ` with ${proj.framework}` : ''}.`);
     }
 
-    if (/compare|vs|versus|better|which/i.test(lower)) {
-      return 'tool-comparison';
+    parts.push('');
+    parts.push('Can you analyze the knowledge frames below and give me:');
+    parts.push('- The specific current method/command to use');
+    parts.push('- Any version requirements or gotchas');
+    parts.push('- What deprecated approaches to avoid');
+    parts.push('');
+    parts.push('If the frames don\'t contain relevant info for this specific task, just let me know.');
+
+    return parts.join('\n');
+  }
+
+  private normalizeKnowledgeCategory(
+    category: unknown,
+    needsKnowledge: boolean
+  ): KnowledgeQuery['category'] | 'none' {
+    const allowed = new Set([
+      'best-practice',
+      'tool-comparison',
+      'deprecated-check',
+      'current-standard',
+      'none',
+    ]);
+
+    if (typeof category === 'string' && allowed.has(category)) {
+      return category as KnowledgeQuery['category'] | 'none';
     }
 
-    if (/current|modern|latest|standard|recommended/i.test(lower)) {
-      return 'current-standard';
+    return needsKnowledge ? 'current-standard' : 'none';
+  }
+
+  private async rewriteKnowledgeQuery(
+    query: string,
+    category: KnowledgeQuery['category'] | 'none'
+  ): Promise<{ query: string; techStack?: string; source?: string; filters?: string[] }> {
+    const trimmed = query.trim();
+    if (trimmed.length === 0) {
+      return { query: trimmed };
     }
 
-    return 'current-standard';
+    const prompt = buildKnowledgeQueryRewritePrompt({
+      query: trimmed,
+      category,
+      environment: this.buildKnowledgeRewriteEnvironment(),
+    });
+
+    try {
+      const response = await this.llm.chat(
+        [
+          { role: 'system', content: KNOWLEDGE_QUERY_REWRITE_SYSTEM_PROMPT },
+          { role: 'user', content: prompt },
+        ],
+        { format: KNOWLEDGE_QUERY_REWRITE_SCHEMA }
+      );
+
+      const content = response.content || '{}';
+      const parsed = parseJsonObject<Record<string, unknown>>(content);
+      const rewrittenQuery =
+        typeof parsed.query === 'string' ? parsed.query.trim() : '';
+      const techStack =
+        typeof parsed.tech_stack === 'string' && parsed.tech_stack.trim().length > 0
+          ? parsed.tech_stack.trim()
+          : undefined;
+      const source =
+        typeof parsed.source === 'string' && parsed.source.trim().length > 0
+          ? parsed.source.trim()
+          : undefined;
+      const filters = Array.isArray(parsed.filters)
+        ? parsed.filters.filter((value: unknown) => typeof value === 'string' && value.trim().length > 0)
+        : undefined;
+
+      if (rewrittenQuery.length === 0) {
+        return { query: trimmed, techStack, source, filters };
+      }
+
+      return { query: rewrittenQuery, techStack, source, filters };
+    } catch (error) {
+      logger.warn(`[DirectExecutor] Knowledge query rewrite failed: ${error}`);
+      return { query: trimmed };
+    }
+  }
+
+  private buildKnowledgeRewriteEnvironment(): Record<string, unknown> {
+    const memory = getWorkspaceMemory()?.get();
+    const lastProject = memory?.lastProjectCreated
+      ? {
+          type: memory.lastProjectCreated.type,
+          framework: memory.lastProjectCreated.framework,
+        }
+      : undefined;
+
+    return {
+      os: this.describePlatform(os.platform()),
+      arch: os.arch(),
+      nodeVersion: process.version,
+      packageManager: memory?.packageManager,
+      lastProject,
+      workingDirectory: this.workingDirectory,
+    };
+  }
+
+  private describePlatform(platform: string): string {
+    switch (platform) {
+      case 'darwin':
+        return 'macos';
+      case 'win32':
+        return 'windows';
+      case 'linux':
+        return 'linux';
+      default:
+        return platform;
+    }
+  }
+
+  private async maybeRewriteKnowledgeArgs(args: Record<string, any>): Promise<void> {
+    if (!args || typeof args !== 'object') {
+      return;
+    }
+    const rawQuery = typeof args.query === 'string' ? args.query.trim() : '';
+    if (rawQuery.length === 0) {
+      return;
+    }
+
+    const rawCategory = typeof args.category === 'string' ? args.category : 'current-standard';
+    const normalized = this.normalizeKnowledgeCategory(rawCategory, true);
+    const effectiveCategory = normalized === 'none' ? 'current-standard' : normalized;
+    const rewrite = await this.rewriteKnowledgeQuery(rawQuery, effectiveCategory);
+
+    if (rewrite.query && rewrite.query.length > 0) {
+      args.query = rewrite.query;
+    }
+    if (!args.tech_stack && rewrite.techStack) {
+      args.tech_stack = rewrite.techStack;
+    }
+    if (!args.source && rewrite.source) {
+      args.source = rewrite.source;
+    }
+    if ((!args.filters || args.filters.length === 0) && rewrite.filters && rewrite.filters.length > 0) {
+      args.filters = rewrite.filters;
+    }
+    if (normalized !== rawCategory) {
+      args.category = effectiveCategory;
+    }
   }
 
   /**
@@ -758,21 +1133,13 @@ export class DirectExecutor {
       content: ctx.query,
     });
 
-    if (ctx.preflight) {
+    if (ctx.preflight?.acknowledgment) {
+      // IMPORTANT: Only show the synthesis to main agent, NOT raw frames
+      // The sub-agent already filtered/synthesized the knowledge
       messages.push({
         role: 'assistant',
-        content: 'Preflight knowledge query',
-        tool_calls: ctx.preflight.toolCalls,
+        content: `I queried the knowledge base for current best practices. Here's what I found:\n\n${ctx.preflight.acknowledgment}`,
       });
-
-      for (const result of ctx.preflight.toolResults) {
-        messages.push({
-          role: 'tool',
-          tool_name: result.tool_name,
-          tool_call_id: result.tool_call_id,
-          content: result.content,
-        } as any);
-      }
     }
 
     const recentStart = Math.max(0, ctx.turns.length - DirectExecutor.RECENT_TURNS_TO_KEEP);
@@ -1085,6 +1452,11 @@ export class DirectExecutor {
         args = JSON.parse(call.function.arguments);
       } else {
         args = call.function.arguments;
+      }
+
+      if (skillName === 'knowledge-query') {
+        await this.maybeRewriteKnowledgeArgs(args);
+        call.function.arguments = args;
       }
 
       logger.info(`[DirectExecutor] Executing: ${skillName}(${JSON.stringify(args).substring(0, 100)})`);

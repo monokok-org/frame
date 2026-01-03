@@ -2,6 +2,10 @@
 
 A coding agent optimized for local LLMs, with a custom TUI.
 
+## Caution
+
+> This project is highly experimental right now. Use for testing only.
+
 ## Install
 
 From npm (recommended):

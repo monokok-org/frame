@@ -25,6 +25,7 @@ export interface FramebaseMetadata {
 export interface FramebaseFrame {
   metadata?: FramebaseMetadata;
   context?: string;
+  content?: string;
   [key: string]: unknown;
 }
 
@@ -43,7 +44,7 @@ export interface FramebaseConfig {
 const DEFAULT_FRAMEBASE_URL =
   process.env.FRAMEBASE_URL || BUILD_FRAMEBASE_URL || 'http://localhost:8080/query';
 const DEFAULT_FRAMEBASE_TIMEOUT_MS = Number.parseInt(process.env.FRAMEBASE_TIMEOUT_MS || '3000', 10);
-const DEFAULT_FRAMEBASE_LIMIT = Number.parseInt(process.env.FRAMEBASE_LIMIT || '5', 10);
+const DEFAULT_FRAMEBASE_LIMIT = Number.parseInt(process.env.FRAMEBASE_LIMIT || '10', 10);
 const DEFAULT_MAX_FRAME_CHARS = Number.parseInt(process.env.FRAMEBASE_MAX_FRAME_CHARS || '3000', 10);
 const DEFAULT_FRAMEBASE_ENABLED = process.env.FRAMEBASE_ENABLED
   ? process.env.FRAMEBASE_ENABLED !== 'false'
@@ -83,9 +84,13 @@ export class FramebaseClient {
       versionRange: params.versionRange || undefined,
     };
 
-    logger.debug(`[Framebase] Querying "${params.q}" (limit=${limit})`);
+    logger.info(
+      `[Framebase] POST ${this.config.baseUrl} q="${params.q}" limit=${limit}` +
+        `${payload.filters ? ` filters=${JSON.stringify(payload.filters)}` : ''}` +
+        `${payload.versionRange ? ` versionRange="${payload.versionRange}"` : ''}`
+    );
 
-    const response = await fetch(this.config.baseUrl, {
+    const response = await fetch(this.config.baseUrl + '/query' , {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -95,11 +100,24 @@ export class FramebaseClient {
     });
 
     if (!response.ok) {
+      let responseBody = '';
+      try {
+        responseBody = await response.text();
+      } catch {
+        responseBody = '';
+      }
+      const preview = responseBody ? responseBody.slice(0, 400).replace(/\s+/g, ' ').trim() : '';
+      logger.warn(
+        `[Framebase] Response ${response.status} ${response.statusText}` +
+          `${preview ? ` body="${preview}"` : ''}`
+      );
       throw new Error(`Framebase failed: ${response.status} ${response.statusText}`);
     }
 
     const data = (await response.json()) as FramebaseResponse;
     const frames = Array.isArray(data.frames) ? data.frames : [];
+
+    logger.info(`[Framebase] Response ok frames=${frames.length}`);
 
     return {
       frames: frames.slice(0, limit).map((frame) => this.normalizeFrame(frame)),
@@ -111,6 +129,12 @@ export class FramebaseClient {
       return {
         ...frame,
         context: this.trimContext(frame.context),
+      };
+    }
+    if (typeof frame?.content === 'string') {
+      return {
+        ...frame,
+        context: this.trimContext(frame.content),
       };
     }
     return { ...frame };

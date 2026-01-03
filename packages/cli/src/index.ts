@@ -6,22 +6,12 @@
  * Main entry point for the application.
  */
 
-import { readFileSync } from 'node:fs';
 import { loadConfig, ensureFrameDirectory } from './utils/config.js';
 import { logger, setConsoleLoggingEnabled } from './utils/logger.js';
 import { createRuntime } from './core/index.js';
 import { TUIRepl } from './cli/index.js';
 import chalk from 'chalk';
-
-function getVersion(): string {
-  try {
-    const pkgPath = new URL('../package.json', import.meta.url);
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as { version?: string };
-    return pkg.version ?? 'unknown';
-  } catch {
-    return 'unknown';
-  }
-}
+import { getFrameVersion } from './utils/version.js';
 
 function getHelpText(): string {
   return [
@@ -47,7 +37,7 @@ async function main() {
     }
 
     if (args.includes('--version')) {
-      console.log(`frame ${getVersion()}`);
+      console.log(`frame ${getFrameVersion()}`);
       process.exit(0);
     }
 
