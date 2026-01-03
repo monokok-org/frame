@@ -49,7 +49,9 @@ Use this skill when you need to:
 - Compare tools or approaches
 - Check current standards for a technology
 
-This skill queries Framebase first, then falls back to web search, and caches results locally.
+This skill queries Framebase (Meilisearch-style keyword search) first, then falls back to web search, and caches results locally.
+Use concise keyword queries (not full sentences). If you know the primary tool/library, set "source" or include it as a keyword.
+Include relevant environment context (OS, package manager, tool name) when it helps.
 Include exact versions (node 20, pytest 7.4.2, cuda 12) when relevant.
 
 IMPORTANT: Always use this BEFORE using potentially outdated tools or methods.`,
@@ -59,7 +61,7 @@ IMPORTANT: Always use this BEFORE using potentially outdated tools or methods.`,
     properties: {
       query: {
         type: 'string',
-        description: 'What you need to know. Be specific. Examples: "how to create react app", "modern nodejs testing framework", "is create-react-app deprecated"'
+        description: 'What you need to know. Be specific. Examples: "how to create vite app", "modern nodejs testing framework", "is remix deprecated"'
       },
       category: {
         type: 'string',

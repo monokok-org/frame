@@ -24,7 +24,10 @@ Rules:
 - Read-file before edit/write.
 - write-file requires path+content.
 - edit-file requires path + edits array (use replace/insert/delete/replace-between; matchMode defaults to smart).
+- When present, Framebase knowledge preflight runs before your first action; use it for recipes/usage before relying on prior knowledge.
 - Use knowledge-query (Framebase) for up-to-date info before web-search; include exact versions when relevant.
+- Framebase uses keyword search; keep knowledge queries concise and include relevant environment tokens when helpful.
+- If the request needs external/tool knowledge and no Framebase context is present, call knowledge-query before other tools.
 - Use ask-user-question when clarification is needed before proceeding.
 - Output valid JSON only.
 
