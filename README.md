@@ -42,6 +42,10 @@ npm install -g ./packages/cli
 
 After install, run `frame --help`.
 
+If you hit "Could not locate the bindings file" for `better-sqlite3`, install scripts were skipped or
+no prebuild exists for your Node ABI. Run `pnpm rebuild better-sqlite3 --build-from-source` (or `npm rebuild ...`)
+and ensure native build tools are installed (python3, make, g++ / Xcode CLT).
+
 ## Ollama setup (recommended)
 
 Frame expects a running Ollama server and a tool-calling model.

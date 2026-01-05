@@ -225,6 +225,7 @@ export class WorkspaceDB {
   // ============================================================
 
   storeContext(ctx: WorkspaceContext): void {
+
     const stmt = this.db.prepare(`
       INSERT INTO workspace_context (
         project_root, project_type, project_framework, directory_structure,
@@ -252,6 +253,7 @@ export class WorkspaceDB {
   }
 
   getContext(projectRoot: string, sessionId: string): WorkspaceContext | null {
+
     const stmt = this.db.prepare(`
       SELECT * FROM workspace_context
       WHERE project_root = ? AND session_id = ?
@@ -264,6 +266,7 @@ export class WorkspaceDB {
   }
 
   updateContextVerified(projectRoot: string, sessionId: string): void {
+
     const stmt = this.db.prepare(`
       UPDATE workspace_context
       SET last_verified = ?
@@ -278,6 +281,7 @@ export class WorkspaceDB {
   // ============================================================
 
   storePattern(pattern: LearnedPattern): void {
+
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO learned_patterns (
         id, category, keywords, context_tags, prerequisites, verification,
@@ -305,6 +309,7 @@ export class WorkspaceDB {
   }
 
   getPattern(id: string): LearnedPattern | null {
+
     const stmt = this.db.prepare('SELECT * FROM learned_patterns WHERE id = ?');
     const row = stmt.get(id) as LearnedPattern | undefined;
     return row || null;
@@ -315,6 +320,7 @@ export class WorkspaceDB {
     minConfidence?: number;
     limit?: number;
   }): LearnedPattern[] {
+
     let sql = 'SELECT * FROM learned_patterns WHERE 1=1';
     const params: any[] = [];
 
@@ -340,6 +346,7 @@ export class WorkspaceDB {
   }
 
   updatePatternSuccess(id: string): void {
+
     const stmt = this.db.prepare(`
       UPDATE learned_patterns
       SET confidence = MIN(1.0, confidence + 0.05),
@@ -353,6 +360,7 @@ export class WorkspaceDB {
   }
 
   updatePatternFailure(id: string): void {
+
     const stmt = this.db.prepare(`
       UPDATE learned_patterns
       SET confidence = MAX(0.1, confidence - 0.1),
@@ -368,6 +376,7 @@ export class WorkspaceDB {
   // ============================================================
 
   storeDocumentation(doc: DocumentationEntry): void {
+
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO documentation_cache (
         url, technology, raw_content, structured_data, prerequisites,
@@ -395,6 +404,7 @@ export class WorkspaceDB {
   }
 
   getDocumentation(url: string): DocumentationEntry | null {
+
     const stmt = this.db.prepare('SELECT * FROM documentation_cache WHERE url = ?');
     const row = stmt.get(url) as DocumentationEntry | undefined;
     return row || null;
@@ -404,6 +414,7 @@ export class WorkspaceDB {
     technology?: string;
     limit?: number;
   }): DocumentationEntry[] {
+
     let sql = 'SELECT * FROM documentation_cache WHERE 1=1';
     const params: any[] = [];
 
@@ -428,6 +439,7 @@ export class WorkspaceDB {
   // ============================================================
 
   recordExecution(record: ExecutionRecord): void {
+
     const stmt = this.db.prepare(`
       INSERT INTO execution_history (
         user_query, session_id, executor_type, plan, tool_invocations,
@@ -460,6 +472,7 @@ export class WorkspaceDB {
     status?: string;
     limit?: number;
   }): ExecutionRecord[] {
+
     let sql = 'SELECT * FROM execution_history WHERE 1=1';
     const params: any[] = [];
 
@@ -489,6 +502,7 @@ export class WorkspaceDB {
   // ============================================================
 
   storeKnowledge(entry: KnowledgeEntry): void {
+
     const stmt = this.db.prepare(`
       INSERT INTO knowledge_cache (
         query, query_embedding, answer, category, tech_stack, sources,
@@ -520,6 +534,7 @@ export class WorkspaceDB {
     minConfidence?: number;
     limit?: number;
   }): KnowledgeEntry[] {
+
     let sql = 'SELECT * FROM knowledge_cache WHERE 1=1';
     const params: any[] = [];
 
@@ -550,6 +565,7 @@ export class WorkspaceDB {
   }
 
   updateKnowledgeSuccess(id: number): void {
+
     const stmt = this.db.prepare(`
       UPDATE knowledge_cache
       SET confidence = MIN(1.0, confidence + 0.05),
@@ -562,6 +578,7 @@ export class WorkspaceDB {
   }
 
   updateKnowledgeFailure(id: number): void {
+
     const stmt = this.db.prepare(`
       UPDATE knowledge_cache
       SET confidence = MAX(0.1, confidence - 0.1),
@@ -577,12 +594,15 @@ export class WorkspaceDB {
   // UTILITIES
   // ============================================================
 
+
   close(): void {
+
     this.db.close();
     logger.info('[WorkspaceDB] Closed');
   }
 
   vacuum(): void {
+
     this.db.exec('VACUUM');
     logger.info('[WorkspaceDB] Vacuumed');
   }
@@ -594,6 +614,7 @@ export class WorkspaceDB {
     executions: number;
     knowledge: number;
   } {
+
     const contexts = this.db.prepare('SELECT COUNT(*) as count FROM workspace_context').get() as { count: number };
     const patterns = this.db.prepare('SELECT COUNT(*) as count FROM learned_patterns').get() as { count: number };
     const docs = this.db.prepare('SELECT COUNT(*) as count FROM documentation_cache').get() as { count: number };

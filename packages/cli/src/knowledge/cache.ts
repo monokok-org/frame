@@ -93,9 +93,6 @@ export class KnowledgeCache {
     queryEmbedding: number[],
     options: CacheSearchOptions = {}
   ): Promise<CacheEntry[]> {
-    if (!this.enabled) {
-      return [];
-    }
     const {
       threshold = 0.8,
       limit = 5,
@@ -160,9 +157,6 @@ export class KnowledgeCache {
    * Store a new cache entry
    */
   async store(entry: CacheEntry): Promise<void> {
-    if (!this.enabled) {
-      return;
-    }
     const stmt = this.db.prepare(`
       INSERT INTO cache (
         query, query_embedding, answer, category, tech_stack,
@@ -189,9 +183,6 @@ export class KnowledgeCache {
    * Update access timestamp and count
    */
   updateAccess(id: number): void {
-    if (!this.enabled) {
-      return;
-    }
     const stmt = this.db.prepare(`
       UPDATE cache
       SET accessed_at = ?, access_count = access_count + 1
@@ -205,9 +196,6 @@ export class KnowledgeCache {
    * Get cache statistics
    */
   getStats(): { total: number; by_category: Record<string, number> } {
-    if (!this.enabled) {
-      return { total: 0, by_category: {} };
-    }
     const total = this.db.prepare('SELECT COUNT(*) as count FROM cache').get() as { count: number };
 
     const byCategory = this.db.prepare(`
@@ -226,9 +214,6 @@ export class KnowledgeCache {
    * Clear old entries (older than days)
    */
   clearOld(days: number): number {
-    if (!this.enabled) {
-      return 0;
-    }
     const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
 
     const stmt = this.db.prepare('DELETE FROM cache WHERE cached_at < ?');
@@ -242,17 +227,11 @@ export class KnowledgeCache {
    * Clear all cache
    */
   clearAll(): void {
-    if (!this.enabled) {
-      return;
-    }
     this.db.prepare('DELETE FROM cache').run();
     logger.info('[KnowledgeCache] Cleared all entries');
   }
 
   close(): void {
-    if (!this.enabled) {
-      return;
-    }
     this.db.close();
   }
 }

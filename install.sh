@@ -30,13 +30,13 @@ fi
 
 case "$PM" in
   pnpm)
-    pnpm add -g ${REGISTRY_ARG} "$TARGET"
+    PNPM_IGNORE_SCRIPTS=false pnpm add -g ${REGISTRY_ARG} "$TARGET"
     ;;
   npm)
-    npm install -g ${REGISTRY_ARG} "$TARGET"
+    NPM_CONFIG_IGNORE_SCRIPTS=false npm install -g ${REGISTRY_ARG} "$TARGET"
     ;;
   yarn)
-    yarn global add ${REGISTRY_ARG} "$TARGET"
+    YARN_IGNORE_SCRIPTS=false yarn global add ${REGISTRY_ARG} "$TARGET"
     ;;
   *)
     echo "Unsupported package manager: $PM"
