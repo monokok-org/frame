@@ -60,9 +60,6 @@ importers:
       '@homunculus-live/semantic-engine':
         specifier: '*'
         version: 0.1.0
-      better-sqlite3:
-        specifier: ^12.5.0
-        version: 12.5.0
       chalk:
         specifier: ^5.4.1
         version: 5.6.2
@@ -75,6 +72,10 @@ importers:
       winston:
         specifier: ^3.17.0
         version: 3.19.0
+    optionalDependencies:
+      better-sqlite3:
+        specifier: ^12.5.0
+        version: 12.5.0
     devDependencies:
       tsx:
         specifier: ^4.21.0

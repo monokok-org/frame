@@ -9,10 +9,10 @@
  * - knowledge_cache (migrated from separate file)
  */
 
-import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { logger } from '../utils/logger.js';
+import { openSQLite, type SQLiteDatabase } from './sqlite.js';
 
 export interface WorkspaceContext {
   id?: number;
@@ -95,7 +95,7 @@ export interface KnowledgeEntry {
 }
 
 export class WorkspaceDB {
-  private db: Database.Database;
+  private db: SQLiteDatabase;
   private dbPath: string;
 
   constructor(dbPath?: string) {
@@ -108,10 +108,11 @@ export class WorkspaceDB {
       fs.mkdirSync(dir, { recursive: true });
     }
 
-    this.db = new Database(this.dbPath);
+    const { db, backend } = openSQLite(this.dbPath);
+    this.db = db;
     this.initSchema();
 
-    logger.info(`[WorkspaceDB] Initialized at ${this.dbPath}`);
+    logger.info(`[WorkspaceDB] Initialized at ${this.dbPath} (${backend})`);
   }
 
   private initSchema(): void {

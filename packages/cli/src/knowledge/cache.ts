@@ -5,12 +5,12 @@
  * Stores query-answer pairs with embeddings for similarity matching.
  */
 
-import Database from 'better-sqlite3';
 import { mkdir } from 'fs/promises';
 import { dirname, join } from 'path';
 import { homedir } from 'os';
 import { cosineSimilarity } from '@homunculus-live/core';
 import { logger } from '../utils/logger.js';
+import { openSQLite, type SQLiteDatabase, type SQLiteBackend } from '../db/sqlite.js';
 
 export interface CacheEntry {
   id?: number;
@@ -34,7 +34,7 @@ export interface CacheSearchOptions {
 }
 
 export class KnowledgeCache {
-  private db!: Database.Database;
+  private db!: SQLiteDatabase;
   private cachePath: string;
   private enabled = false;
 
@@ -47,8 +47,12 @@ export class KnowledgeCache {
     await mkdir(dirname(this.cachePath), { recursive: true });
 
     // Open database
+    let backend: SQLiteBackend | 'unknown' = 'unknown';
     try {
-      this.db = new Database(this.cachePath);
+      const opened = openSQLite(this.cachePath);
+      const { db } = opened;
+      backend = opened.backend;
+      this.db = db;
     } catch (error) {
       this.enabled = false;
       logger.warn(`[KnowledgeCache] Disabled (failed to open DB): ${error}`);
@@ -79,7 +83,7 @@ export class KnowledgeCache {
     `);
 
     this.enabled = true;
-    logger.debug(`[KnowledgeCache] Initialized at ${this.cachePath}`);
+    logger.debug(`[KnowledgeCache] Initialized at ${this.cachePath} (${backend})`);
   }
 
   isEnabled(): boolean {

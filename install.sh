@@ -28,15 +28,29 @@ if [ -n "${FRAME_REGISTRY:-}" ]; then
   REGISTRY_ARG="--registry=${FRAME_REGISTRY}"
 fi
 
+NODE_MAJOR=""
+if command -v node >/dev/null 2>&1; then
+  NODE_MAJOR="$(node -p "process.versions.node.split('.')[0]")"
+fi
+
+NPM_OPTIONAL_ARG=""
+PNPM_OPTIONAL_ARG=""
+YARN_OPTIONAL_ARG=""
+if [ -n "$NODE_MAJOR" ] && [ "$NODE_MAJOR" -ge 22 ]; then
+  NPM_OPTIONAL_ARG="--omit=optional"
+  PNPM_OPTIONAL_ARG="--no-optional"
+  YARN_OPTIONAL_ARG="--ignore-optional"
+fi
+
 case "$PM" in
   pnpm)
-    PNPM_IGNORE_SCRIPTS=false pnpm add -g ${REGISTRY_ARG} "$TARGET"
+    PNPM_IGNORE_SCRIPTS=false pnpm add -g ${PNPM_OPTIONAL_ARG} ${REGISTRY_ARG} "$TARGET"
     ;;
   npm)
-    NPM_CONFIG_IGNORE_SCRIPTS=false npm install -g ${REGISTRY_ARG} "$TARGET"
+    NPM_CONFIG_IGNORE_SCRIPTS=false npm install -g ${NPM_OPTIONAL_ARG} ${REGISTRY_ARG} "$TARGET"
     ;;
   yarn)
-    YARN_IGNORE_SCRIPTS=false yarn global add ${REGISTRY_ARG} "$TARGET"
+    YARN_IGNORE_SCRIPTS=false yarn global add ${YARN_OPTIONAL_ARG} ${REGISTRY_ARG} "$TARGET"
     ;;
   *)
     echo "Unsupported package manager: $PM"
