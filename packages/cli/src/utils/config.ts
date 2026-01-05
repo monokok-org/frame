@@ -1,6 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import dotenv from 'dotenv';
 import { SettingsManager } from './settings.js';
 
 export interface FrameConfig {
@@ -34,8 +33,6 @@ const defaultConfig: FrameConfig = {
 let config: FrameConfig = { ...defaultConfig };
 
 export function loadConfig(): FrameConfig {
-  dotenv.config();
-
   // Load user settings from ~/.frame/settings.json
   const settings = new SettingsManager();
   const userSettings = settings.get();
