@@ -3,6 +3,11 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 
+const nodeMajor = Number(process.versions.node.split('.')[0] || 0);
+if (nodeMajor >= 22) {
+  process.exit(0);
+}
+
 function canLoadBetterSqlite3() {
   try {
     require('better-sqlite3');
