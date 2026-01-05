@@ -1,5 +1,17 @@
 # @framedev/cli
 
+## 0.3.0
+
+### Minor Changes
+
+- Add native sqlite support
+
+## 0.2.3
+
+### Patch Changes
+
+- Fix sqlite3 dep error
+
 ## 0.2.2
 
 ### Patch Changes

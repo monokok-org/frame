@@ -1,6 +1,6 @@
 {
   "name": "@framedev/cli",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Frame: coding agent optimized for local LLMs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -44,11 +44,13 @@
     "@homunculus-live/introspection": "*",
     "@homunculus-live/primitives": "*",
     "@homunculus-live/semantic-engine": "*",
-    "better-sqlite3": "^12.5.0",
     "chalk": "^5.4.1",
     "dotenv": "^17.2.3",
     "glob": "^13.0.0",
     "winston": "^3.17.0"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^12.5.0"
   },
   "engines": {
     "node": ">=18.0.0"
