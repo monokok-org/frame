@@ -50,7 +50,8 @@ export class Renderer {
     if (this.useAltScreen) {
       output = this.renderDiff(content);
     } else {
-      output = ansiEscapes.eraseLines(this.countLines(this.lastFrame)) + content;
+      const lastLineCount = this.countLines(this.lastFrame);
+      output = ansiEscapes.eraseLines(lastLineCount) + content;
     }
 
     process.stdout.write(output);

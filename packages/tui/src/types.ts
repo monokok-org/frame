@@ -1,9 +1,4 @@
 /**
- * Core types for the TUI framework
- * Inspired by The Elm Architecture (bubbletea)
- */
-
-/**
  * Command is an async operation that may produce a message
  */
 export type Cmd<Msg> = () => Promise<Msg | null>;
@@ -103,8 +98,104 @@ export interface ErrorMsg {
 }
 
 /**
+ * Selectable option for interactive components
+ */
+export interface SelectableOption {
+  id: string;
+  label: string;
+  selected?: boolean;
+  description?: string;
+  disabled?: boolean;
+}
+
+/**
+ * Step status for progress reporting
+ */
+export type StepStatus = 'pending' | 'running' | 'success' | 'error' | 'skipped';
+
+/**
+ * Step information for progress reporting
+ */
+export interface Step {
+  id: string;
+  label: string;
+  status: StepStatus;
+  detail?: string;
+  error?: Error;
+  tool?: string;
+  args?: Record<string, unknown>;
+}
+
+/**
  * Quit message
  */
 export interface QuitMsg {
   type: 'quit';
+}
+
+/**
+ * Box style configuration
+ */
+export interface BoxStyle {
+  topLeft: string;
+  topRight: string;
+  bottomLeft: string;
+  bottomRight: string;
+  horizontal: string;
+  vertical: string;
+  leftT: string;
+  rightT: string;
+  topT: string;
+  bottomT: string;
+  cross: string;
+}
+
+/**
+ * Progress bar style configuration
+ */
+export interface ProgressBarStyle {
+  filledChar: string;
+  emptyChar: string;
+  leftCap: string;
+  rightCap: string;
+}
+
+/**
+ * Spinner style configuration
+ */
+export interface SpinnerStyle {
+  frames: readonly string[];
+  interval: number;
+}
+
+/**
+ * Tick message for animations
+ */
+export interface TickMsg {
+  type: 'tick';
+  time: number;
+}
+
+/**
+ * Focus change message
+ */
+export interface FocusMsg {
+  type: 'focus';
+  focused: boolean;
+}
+
+/**
+ * Blur message
+ */
+export interface BlurMsg {
+  type: 'blur';
+}
+
+/**
+ * Scroll message
+ */
+export interface ScrollMsg {
+  type: 'scroll';
+  direction: 'up' | 'down';
+  lines: number;
 }

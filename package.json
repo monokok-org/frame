@@ -35,6 +35,10 @@
     }
   },
   "dependencies": {
-    "@framedev/root": "link:"
+    "@framedev/root": "link:",
+    "@vscode/ripgrep": "^1.17.0",
+    "fast-glob": "^3.3.3",
+    "ignore": "^7.0.5",
+    "minimatch": "^10.1.1"
   }
 }

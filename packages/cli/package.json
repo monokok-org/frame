@@ -1,12 +1,12 @@
 {
   "name": "@framedev/cli",
   "version": "0.3.0",
-  "description": "Frame: coding agent optimized for local LLMs",
+  "description": "Frame: local AI code generation agent",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
   "bin": {
-    "frame": "./dist/index.js"
+    "frame": "./dist/cli/index.js"
   },
   "exports": {
     ".": {
@@ -15,18 +15,15 @@
     }
   },
   "files": [
-    "dist",
-    "scripts/ensure-better-sqlite3.js"
+    "dist"
   ],
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "build": "node scripts/generate-build-config.js && tsc",
-    "postinstall": "node scripts/ensure-better-sqlite3.js",
-    "predev": "node scripts/ensure-better-sqlite3.js",
-    "dev": "tsx src/index.ts",
-    "start": "node dist/index.js",
+    "build": "tsc",
+    "dev": "tsx src/cli/index.ts",
+    "start": "node dist/cli/index.js",
     "test": "vitest",
     "lint": "eslint src --ext .ts",
     "clean": "rm -rf dist"
@@ -35,24 +32,16 @@
     "coding-agent",
     "local-llm",
     "ai-assistant",
-    "code-generation",
-    "tui"
+    "code-generation"
   ],
   "dependencies": {
     "@framedev/tui": "workspace:*",
-    "@homunculus-live/core": "*",
-    "@homunculus-live/introspection": "*",
-    "@homunculus-live/primitives": "*",
-    "@homunculus-live/semantic-engine": "*",
-    "chalk": "^5.4.1",
-    "glob": "^13.0.0",
-    "winston": "^3.17.0"
-  },
-  "optionalDependencies": {
-    "better-sqlite3": "^12.5.0"
+    "chalk": "^5.6.2",
+    "diff": "^8.0.3",
+    "ollama": "^0.6.3"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "devDependencies": {
     "tsx": "^4.21.0"

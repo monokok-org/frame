@@ -1,12 +1,34 @@
 /**
  * Debug Logger
  *
- * Writes detailed LLM request/response logs to a debug file
- * Keeps UI clean while providing deep debugging capability
  */
 
 import fs from 'fs';
 import path from 'path';
+
+export interface InteractionTrack {
+  id: string;
+  parentId?: string;
+  type: 'user' | 'system' | 'llm' | 'tool' | 'executor';
+}
+
+export type LogEventType =
+  | 'input'
+  | 'output'
+  | 'llm-request'
+  | 'llm-response'
+  | 'tool-start'
+  | 'tool-end'
+  | 'state-change'
+  | 'error'
+  | 'info';
+
+export interface LogEvent {
+  trackId: string;
+  type: LogEventType;
+  data: any;
+  timestamp?: string; // ISO string
+}
 
 export class DebugLogger {
   private logPath: string;
@@ -23,40 +45,63 @@ export class DebugLogger {
       fs.mkdirSync(frameDir, { recursive: true });
     }
 
-    // Create session log file
-    this.logPath = path.join(frameDir, `debug-${this.sessionId}.log`);
+    // Create session JSONL file
+    this.logPath = path.join(frameDir, `debug-${this.sessionId}.jsonl`);
 
     if (this.enabled) {
-      this.writeHeader();
+      this.logSystemEvent({
+        event: 'session_start',
+        sessionId: this.sessionId,
+        timestamp: new Date().toISOString()
+      });
     }
   }
 
-  private writeHeader(): void {
-    const header = `
-${'='.repeat(80)}
-Frame Debug Log
-Session: ${this.sessionId}
-Started: ${new Date().toISOString()}
-${'='.repeat(80)}
-
-`;
-    this.append(header);
-  }
-
-  private append(content: string): void {
+  private append(event: LogEvent): void {
     if (!this.enabled) return;
 
     try {
-      fs.appendFileSync(this.logPath, content);
+      const entry = {
+        timestamp: event.timestamp || new Date().toISOString(),
+        sessionId: this.sessionId,
+        ...event
+      };
+      fs.appendFileSync(this.logPath, JSON.stringify(entry) + '\n');
     } catch (error) {
       console.error('[DebugLogger] Failed to write to debug log:', error);
     }
   }
 
   /**
+   * Log a structured event
+   */
+  logEvent(event: LogEvent): void {
+    this.append(event);
+  }
+
+  /**
+   * Helper for system events (no specific track)
+   */
+  logSystemEvent(data: any): void {
+    this.logEvent({
+      trackId: 'system',
+      type: 'info',
+      data
+    });
+  }
+
+  /**
+   * Legacy method support - redirected to structured log
+   */
+  log(message: string): void {
+    this.logSystemEvent({ message });
+  }
+
+  /**
    * Log LLM request
    */
   logLLMRequest(params: {
+    trackId: string;
     url: string;
     model: string;
     messageCount: number;
@@ -64,28 +109,27 @@ ${'='.repeat(80)}
     systemPromptLength: number;
     fullRequest: any;
   }): void {
-    const timestamp = new Date().toISOString();
-    const content = `
-${'-'.repeat(80)}
-[${timestamp}] LLM REQUEST
-${'-'.repeat(80)}
-URL: ${params.url}
-Model: ${params.model}
-Messages: ${params.messageCount}
-Tools: ${params.toolCount}
-System Prompt Length: ${params.systemPromptLength} chars
-
-Full Request:
-${JSON.stringify(params.fullRequest, null, 2)}
-
-`;
-    this.append(content);
+    this.logEvent({
+      trackId: params.trackId,
+      type: 'llm-request',
+      data: {
+        url: params.url,
+        model: params.model,
+        stats: {
+          messages: params.messageCount,
+          tools: params.toolCount,
+          systemPrompt: params.systemPromptLength
+        },
+        body: params.fullRequest
+      }
+    });
   }
 
   /**
    * Log LLM response
    */
   logLLMResponse(params: {
+    trackId: string;
     statusCode: number;
     contentLength: number;
     toolCallsCount: number;
@@ -93,78 +137,46 @@ ${JSON.stringify(params.fullRequest, null, 2)}
     parsedContent?: string;
     error?: string;
   }): void {
-    const timestamp = new Date().toISOString();
-    const content = `
-${'-'.repeat(80)}
-[${timestamp}] LLM RESPONSE
-${'-'.repeat(80)}
-Status: ${params.statusCode}
-Content Length: ${params.contentLength} chars
-Tool Calls: ${params.toolCallsCount}
-${params.error ? `Error: ${params.error}\n` : ''}
-${params.parsedContent ? `Parsed Content: ${params.parsedContent}\n` : ''}
-
-Full Response:
-${JSON.stringify(params.fullResponse, null, 2)}
-
-`;
-    this.append(content);
-  }
-
-  /**
-   * Log empty response issue
-   */
-  logEmptyResponse(params: {
-    attemptNumber: number;
-    strategy: string;
-    diagnostics: any;
-    messagesBeforeRetry: number;
-    messagesAfterRetry: number;
-  }): void {
-    const timestamp = new Date().toISOString();
-    const content = `
-${'!'.repeat(80)}
-[${timestamp}] EMPTY RESPONSE DETECTED
-${'!'.repeat(80)}
-Attempt: ${params.attemptNumber}
-Strategy: ${params.strategy}
-Messages Before Retry: ${params.messagesBeforeRetry}
-Messages After Retry: ${params.messagesAfterRetry}
-
-Diagnostics:
-${JSON.stringify(params.diagnostics, null, 2)}
-
-`;
-    this.append(content);
+    this.logEvent({
+      trackId: params.trackId,
+      type: 'llm-response',
+      data: {
+        status: params.statusCode,
+        stats: {
+          contentLength: params.contentLength,
+          toolCalls: params.toolCallsCount
+        },
+        error: params.error,
+        parsed: params.parsedContent,
+        body: params.fullResponse
+      }
+    });
   }
 
   /**
    * Log executor state
    */
   logExecutorState(params: {
+    trackId: string;
     turn: number;
     status: string;
     thoughtLength: number;
     toolCallsCount: number;
     plan?: any;
   }): void {
-    const timestamp = new Date().toISOString();
-    const content = `
-[${timestamp}] EXECUTOR STATE - Turn ${params.turn}
-Status: ${params.status}
-Thought Length: ${params.thoughtLength} chars
-Tool Calls: ${params.toolCallsCount}
-${params.plan ? `Plan: ${JSON.stringify(params.plan, null, 2)}\n` : ''}
-`;
-    this.append(content);
-  }
-
-  /**
-   * Log general debug info
-   */
-  log(message: string): void {
-    const timestamp = new Date().toISOString();
-    this.append(`[${timestamp}] ${message}\n`);
+    this.logEvent({
+      trackId: params.trackId,
+      type: 'state-change',
+      data: {
+        turn: params.turn,
+        status: params.status,
+        stats: {
+          thought: params.thoughtLength,
+          toolCalls: params.toolCallsCount
+        },
+        plan: params.plan
+      }
+    });
   }
 
   /**
@@ -186,3 +198,4 @@ export function getDebugLogger(): DebugLogger {
   }
   return globalDebugLogger;
 }
+
